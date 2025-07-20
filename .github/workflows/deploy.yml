@@ -55,7 +55,9 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: CDK Bootstrap
-        run: npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+        run: |
+          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }} \
+            --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
         continue-on-error: true  # Allows workflow to continue if already bootstrapped
 
       - name: CDK Synth
