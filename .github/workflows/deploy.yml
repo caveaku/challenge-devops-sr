@@ -24,7 +24,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20  # LTS version 20
-          # Cache parameter removed here
+          cache: 'npm'     # Re-added caching for better performance
 
       - name: Ensure package-lock.json exists
         run: |
@@ -49,8 +49,15 @@ jobs:
           role-session-name: GitHubActions-CDK-Deploy
           role-duration-seconds: 3600
 
+      - name: Verify AWS credentials
+        run: aws sts get-caller-identity
+
       - name: CDK Bootstrap (if needed)
         run: npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+        continue-on-error: true  # Allows workflow to continue if already bootstrapped
+
+      - name: CDK Synth
+        run: npx cdk synth
 
       - name: CDK Diff
         run: npx cdk diff
