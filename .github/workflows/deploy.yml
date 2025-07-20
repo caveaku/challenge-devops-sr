@@ -6,39 +6,45 @@ on:
       - main
 
 permissions:
-  id-token: write
-  contents: read
+  id-token: write   # Required for OIDC authentication
+  contents: read    # Required to checkout code
 
 env:
   AWS_REGION: us-east-1
+  NODE_OPTIONS: "--no-warnings"  # Suppresses Node.js warnings
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Updated to v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4  # Updated to v4
         with:
-          node-version: 18
+          node-version: 20  # Updated to LTS version 20
+          cache: 'npm'      # Adds npm caching for faster installs
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci        # Uses ci for cleaner installs
 
       - name: Run tests
         run: npm test
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v3  # Updated to v3 which uses AWS SDK v3
         with:
           role-to-assume: arn:aws:iam::314146335501:role/cdk-role
           aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-CDK-Deploy
+          role-duration-seconds: 3600  # Explicitly set session duration
+
+      - name: CDK Bootstrap (if needed)
+        run: npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
 
       - name: CDK Diff
-        run: npx cdk diff || exit 1
+        run: npx cdk diff
 
-      - name: CDK Deploy (Dev)
-        run: npx cdk deploy --require-approval never
-
+      - name: CDK Deploy
+        run: npx cdk deploy --require-approval never --verbose
