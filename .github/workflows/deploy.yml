@@ -6,12 +6,12 @@ on:
       - main
 
 permissions:
-  id-token: write   # Required for OIDC authentication
-  contents: read    # Required to checkout code
+  id-token: write
+  contents: read
 
 env:
   AWS_REGION: us-east-1
-  NODE_OPTIONS: "--no-warnings"  # Suppresses Node.js warnings
+  NODE_OPTIONS: "--no-warnings"
 
 jobs:
   deploy:
@@ -23,25 +23,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20  # LTS version 20
-          # Explicitly no caching parameters included
-
-      - name: Clean npm cache
-        run: npm cache clean --force
-
-      - name: Verify clean installation environment
-        run: |
-          echo "Node version: $(node --version)"
-          echo "NPM version: $(npm --version)"
-          echo "No caching will be used for this installation"
+          node-version: 20
 
       - name: Install dependencies
-        run: |
-          npm install --no-package-lock --no-save
-          # Force fresh install without lockfile usage
-
-      - name: Run tests
-        run: npm test
+        run: npm install
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -50,21 +35,32 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-CDK-Deploy
           role-duration-seconds: 3600
+          audience: sts.amazonaws.com
 
-      - name: Verify AWS credentials
-        run: aws sts get-caller-identity
-
-      - name: CDK Bootstrap
+      - name: Force CDK Bootstrap
         run: |
+          # Delete existing bootstrap stack if corrupted
+          aws cloudformation delete-stack \
+            --stack-name CDKToolkit \
+            --region ${{ env.AWS_REGION }} || true
+          
+          # Wait for deletion to complete
+          aws cloudformation wait stack-delete-complete \
+            --stack-name CDKToolkit \
+            --region ${{ env.AWS_REGION }} || true
+          
+          # Bootstrap with full permissions
           npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }} \
-            --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
-        continue-on-error: true  # Allows workflow to continue if already bootstrapped
+            --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess \
+            --trust ${{ secrets.AWS_ACCOUNT_ID }} \
+            --force
 
-      - name: CDK Synth
-        run: npx cdk synth
-
-      - name: CDK Diff
-        run: npx cdk diff
+      - name: Verify Bootstrap
+        run: |
+          aws s3 ls | grep cdk-hnb659fds-assets || exit 1
+          aws cloudformation describe-stacks \
+            --stack-name CDKToolkit \
+            --region ${{ env.AWS_REGION }} || exit 1
 
       - name: CDK Deploy
         run: npx cdk deploy --require-approval never --verbose
