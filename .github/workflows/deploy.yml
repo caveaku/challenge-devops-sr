@@ -24,19 +24,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20  # LTS version 20
-          cache: 'npm'     # Re-added caching for better performance
+          # Explicitly no caching parameters included
 
-      - name: Ensure package-lock.json exists
+      - name: Clean npm cache
+        run: npm cache clean --force
+
+      - name: Verify clean installation environment
         run: |
-          if [ ! -f package-lock.json ]; then
-            echo "Generating package-lock.json..."
-            npm install --package-lock-only
-          else
-            echo "package-lock.json already exists"
-          fi
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "No caching will be used for this installation"
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm install --no-package-lock --no-save
+          # Force fresh install without lockfile usage
 
       - name: Run tests
         run: npm test
@@ -52,7 +54,7 @@ jobs:
       - name: Verify AWS credentials
         run: aws sts get-caller-identity
 
-      - name: CDK Bootstrap (if needed)
+      - name: CDK Bootstrap
         run: npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
         continue-on-error: true  # Allows workflow to continue if already bootstrapped
 
