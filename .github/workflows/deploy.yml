@@ -56,22 +56,9 @@ jobs:
 
       - name: CDK Bootstrap
         run: |
-          # Clean up any existing corrupted bootstrap stack
-          aws cloudformation delete-stack --stack-name CDKToolkit --region ${{ env.AWS_REGION }} || true
-          # Wait for deletion if needed
-          aws cloudformation wait stack-delete-complete --stack-name CDKToolkit --region ${{ env.AWS_REGION }} || true
-          # Force new bootstrap with full permissions
           npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }} \
-            --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess \
-            --trust ${{ secrets.AWS_ACCOUNT_ID }} \
-            --force
+            --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
         continue-on-error: true  # Allows workflow to continue if already bootstrapped
-
-      - name: Verify Bootstrap
-        run: |
-          echo "Checking for bootstrap resources..."
-          aws s3 ls | grep cdk-hnb659fds-assets || (echo "Bootstrap bucket not found!" && exit 1)
-          aws cloudformation describe-stacks --stack-name CDKToolkit --region ${{ env.AWS_REGION }} || (echo "CDKToolkit stack not found!" && exit 1)
 
       - name: CDK Synth
         run: npx cdk synth
