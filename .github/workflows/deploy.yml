@@ -11,8 +11,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  NODE_OPTIONS: "--no-warnings"
-  AWS_ACCOUNT_ID: "31414633501"  # Your account ID without hyphens
+  NODE_OPTIONS: "--no-warnings"  # Suppresses Node.js warnings
 
 jobs:
   deploy:
@@ -24,15 +23,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Clean npm cache
-        run: npm cache clean --force
+          node-version: 20  # LTS version 20
+          cache: 'npm'       # Enable caching for faster installs
 
       - name: Install dependencies
-        run: |
-          npm install
-          npm install -g aws-cdk
+        run: npm ci          # Clean install using package-lock.json
 
       - name: Run tests
         run: npm test
@@ -40,19 +35,22 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
-          role-to-assume: arn:aws:iam::${AWS_ACCOUNT_ID}:role/cdk-role
+          role-to-assume: arn:aws:iam::314146335501:role/cdk-role
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-CDK-Deploy
           role-duration-seconds: 3600
 
       - name: Verify AWS credentials
-        run: |
-          aws sts get-caller-identity
-          echo "Bootstrapping account: ${{ env.AWS_ACCOUNT_ID }}"
+        run: aws sts get-caller-identity
 
-      - name: CDK Bootstrap
-        run: npx cdk bootstrap aws://${{ env.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
-        continue-on-error: true
+      - name: Verify CDK environment
+        run: |
+          # Check if the environment is bootstrapped
+          if ! aws cloudformation describe-stacks --stack-name CDKToolkit --region $AWS_REGION >/dev/null 2>&1; then
+            echo "::error::CDK environment is not bootstrapped in region $AWS_REGION"
+            exit 1
+          fi
+          echo "CDK environment is properly bootstrapped"
 
       - name: CDK Synth
         run: npx cdk synth
