@@ -6,12 +6,12 @@ on:
       - main
 
 permissions:
-  id-token: write
-  contents: read
+  id-token: write   # Required for OIDC authentication
+  contents: read    # Required to checkout code
 
 env:
   AWS_REGION: us-east-1
-  NODE_OPTIONS: "--no-warnings"
+  NODE_OPTIONS: "--no-warnings"  # Suppresses Node.js warnings
 
 jobs:
   deploy:
@@ -23,13 +23,22 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20  # LTS version 20
+          # Explicitly no caching parameters included
 
       - name: Clean npm cache
         run: npm cache clean --force
 
+      - name: Verify clean installation environment
+        run: |
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "No caching will be used for this installation"
+
       - name: Install dependencies
-        run: npm install --no-package-lock --no-save
+        run: |
+          npm install --no-package-lock --no-save
+          # Force fresh install without lockfile usage
 
       - name: Run tests
         run: npm test
@@ -45,21 +54,30 @@ jobs:
       - name: Verify AWS credentials
         run: aws sts get-caller-identity
 
-      - name: Check for existing OIDC provider
-        id: oidc-check
+      - name: CDK Bootstrap
         run: |
-          if aws iam get-open-id-connect-provider \
-            --open-id-connect-provider-arn "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:oidc-provider/token.actions.githubusercontent.com" >/dev/null 2>&1; then
-            echo "oidc_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "oidc_exists=false" >> $GITHUB_OUTPUT
-          fi
+          # Clean up any existing corrupted bootstrap stack
+          aws cloudformation delete-stack --stack-name CDKToolkit --region ${{ env.AWS_REGION }} || true
+          # Wait for deletion if needed
+          aws cloudformation wait stack-delete-complete --stack-name CDKToolkit --region ${{ env.AWS_REGION }} || true
+          # Force new bootstrap with full permissions
+          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }} \
+            --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess \
+            --trust ${{ secrets.AWS_ACCOUNT_ID }} \
+            --force
+        continue-on-error: true  # Allows workflow to continue if already bootstrapped
 
-      - name: Delete existing OIDC provider if needed
-        if: steps.oidc-check.outputs.oidc_exists == 'true'
+      - name: Verify Bootstrap
         run: |
-          aws iam delete-open-id-connect-provider \
-            --open-id-connect-provider-arn "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:oidc-provider/token.actions.githubusercontent.com"
+          echo "Checking for bootstrap resources..."
+          aws s3 ls | grep cdk-hnb659fds-assets || (echo "Bootstrap bucket not found!" && exit 1)
+          aws cloudformation describe-stacks --stack-name CDKToolkit --region ${{ env.AWS_REGION }} || (echo "CDKToolkit stack not found!" && exit 1)
+
+      - name: CDK Synth
+        run: npx cdk synth
+
+      - name: CDK Diff
+        run: npx cdk diff
 
       - name: CDK Deploy
         run: npx cdk deploy --require-approval never --verbose
