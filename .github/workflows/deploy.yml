@@ -24,10 +24,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20  # LTS version 20
-          cache: 'npm'       # Enable caching for faster installs
+          cache: false     # Explicitly disable caching
+
+      - name: Clean npm environment
+        run: |
+          npm cache clean --force
+          rm -rf node_modules
+          rm -f package-lock.json
+
+      - name: Verify clean installation
+        run: |
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "Working directory contents:"
+          ls -la
 
       - name: Install dependencies
-        run: npm ci          # Clean install using package-lock.json
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
 
       - name: Run tests
         run: npm test
@@ -43,11 +57,11 @@ jobs:
       - name: Verify AWS credentials
         run: aws sts get-caller-identity
 
-      - name: Verify CDK environment
+      - name: Validate CDK bootstrap
         run: |
-          # Check if the environment is bootstrapped
           if ! aws cloudformation describe-stacks --stack-name CDKToolkit --region $AWS_REGION >/dev/null 2>&1; then
             echo "::error::CDK environment is not bootstrapped in region $AWS_REGION"
+            echo "Please bootstrap the environment manually first using: npx cdk bootstrap aws://ACCOUNT_NUMBER/$AWS_REGION"
             exit 1
           fi
           echo "CDK environment is properly bootstrapped"
