@@ -1,4 +1,4 @@
-# Senior DevOps Engineer Coding Challenge
+# DevOps Engineer Coding Challenge
 
 This project implements a reusable AWS CDK Construct for provisioning a secure S3 bucket and a GitHub Actions CI/CD workflow for deployment.
 
